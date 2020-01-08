@@ -1,0 +1,22 @@
+file:
+better_eb_310400.fits
+contains data in this order
+height cm[]
+temp [K]
+pgas [dyn/cm^2]
+vlos [cm/s]
+Bln [G]
+Bho [G]
+azi
+
+
+file:
+better_eb_310400_ext.fits
+contains in this order
+optical depth at 500 nm
+density [g/cm^3]
+electron density [cm^-3]
+
+
+The model atmosphere is to be used for code comparison and not the science.
+All the results should be shared with everybody who attended the 1st NLTE workshop.
