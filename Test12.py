@@ -44,6 +44,7 @@ def synth_8542(atmos, conserve, useNe, stokes=False):
     atmos.quadrature(5)
     aSet = RadiativeSet([H_3_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
     aSet.set_active('H', 'Ca')
+    # aSet.set_detailed_lte('Ca')
     spect = aSet.compute_wavelength_grid()
 
     molPaths = ['../Molecules/' + m + '.molecule' for m in ['H2']]
