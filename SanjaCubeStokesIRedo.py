@@ -54,6 +54,8 @@ def crsw_factory(initVal=1e3):
 def cmo_synth(atmosData, crsw=None):
     with open(os.devnull, 'w') as f:
         with redirect_stdout(f):
+            if crsw is not None:
+                crsw = crsw()
             atmos = Atmosphere(ScaleType.Geometric, depthScale=atmosData['height'], temperature=atmosData['temp'], vlos=atmosData['vlos'], vturb=4000*np.ones_like(atmosData['height']))
 
             aSet = RadiativeSet([H_3_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
@@ -101,7 +103,7 @@ for x, y in brokenPixels:
     atmosData.append(prep_atmos(data, x, y))
 
 with ProcessPoolExecutor() as executor:
-    futures = [executor.submit(cmo_synth, d, crsw=crsw_factory()) for d in atmosData]
+    futures = [executor.submit(cmo_synth, d, crsw_factory) for d in atmosData]
     for f in tqdm(as_completed(futures), total=len(futures)):
         pass
 
