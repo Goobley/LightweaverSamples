@@ -24,7 +24,7 @@ def prep_atmos(data, xIdx, yIdx):
 
     return {'height': height, 'temp': temp, 'vlos': vlos, 'pgas': pgas}
 
-def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=1000):
+def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=10000):
     for i in range(NmaxIter):
         dJ = ctx.formal_sol_gamma_matrices()
         if i < Nscatter:
@@ -33,7 +33,7 @@ def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=1000):
         if prd:
             dRho = ctx.prd_redistribute(maxIter=5)
 
-        if dJ < 3e-3 and delta < 1e-3:
+        if ctx.crswDone and dJ < 3e-3 and delta < 1e-3:
             print(i)
             print('----------')
             return
@@ -43,7 +43,15 @@ wave = np.linspace(853.9444, 854.9444, 1001)
 data = fits.getdata('better_eb_310400.fits')
 # atmosData = prep_atmos(data, 10,10)
 
-def cmo_synth(atmosData, parallel=False):
+def crsw_factory(initVal=1e3):
+    val = initVal
+    def callback():
+        nonlocal val
+        val = max(1.0, val * 0.1**(1/val))
+        return val
+    return callback
+
+def cmo_synth(atmosData, parallel=False, crsw=None):
     def inner():
         atmos = Atmosphere(ScaleType.Geometric, depthScale=atmosData['height'], temperature=atmosData['temp'], vlos=atmosData['vlos'], vturb=4000*np.ones_like(atmosData['height']))
 
@@ -57,7 +65,7 @@ def cmo_synth(atmosData, parallel=False):
 
         mols = MolecularTable()
         eqPops = aSet.iterate_lte_ne_eq_pops(mols, atmos)
-        ctx = LwContext(atmos, spect, eqPops, conserveCharge=True, initSol=InitialSolution.Lte)
+        ctx = LwContext(atmos, spect, eqPops, conserveCharge=True, initSol=InitialSolution.Lte, crswCallback=crsw)
         iterate_ctx(ctx, prd=False)
         eqPops.update_lte_atoms_Hmin_pops(atmos)
         Iwave = ctx.compute_rays(wave, [1.0])
@@ -129,9 +137,10 @@ def cmo_synth_lte(atmosData, parallel=False):
     else:
         return inner()
 
-atmosData = prep_atmos(data,10,10)
-Iwave = cmo_synth_2(atmosData)
-Iwave2 = cmo_synth(atmosData)
+atmosData = prep_atmos(data,21,21)
+Iwave = cmo_synth(atmosData, crsw=crsw_factory())
+IwaveNoCrsw = cmo_synth(atmosData)
+IwaveLte = cmo_synth_lte(atmosData)
 
 # atmos.convert_scales(Pgas=atmosData['pgas'])
 # atmos.quadrature(5)
@@ -162,6 +171,6 @@ Iwave2 = cmo_synth(atmosData)
 
 plt.ion()
 plt.plot(wave, Iwave)
-plt.plot(wave, Iwave2)
+plt.plot(wave, IwaveLte)
 # plt.plot(wave, IwaveHse)
 plt.show()

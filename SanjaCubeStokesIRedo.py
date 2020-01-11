@@ -94,12 +94,14 @@ def cmo_synth_lte(atmosData):
             return Iwave
 
 atmosData = []
-for x in range(0, data.shape[0]):
-    for y in range(0, data.shape[1]):
-        atmosData.append(prep_atmos(data, x, y))
+with open('BrokenPixels.pickle', 'rb') as pkl:
+    brokenPixels = pickle.load(pkl)
+
+for x, y in brokenPixels:
+    atmosData.append(prep_atmos(data, x, y))
 
 with ProcessPoolExecutor() as executor:
-    futures = [executor.submit(cmo_synth, d) for d in atmosData]
+    futures = [executor.submit(cmo_synth, d, crsw=crsw_factory()) for d in atmosData]
     for f in tqdm(as_completed(futures), total=len(futures)):
         pass
 
@@ -110,7 +112,7 @@ for f in futures:
     except:
         spectra.append(None)
 
-name = 'CubeFullNlte.pickle'
+name = 'NlteRedo.pickle'
 with open(name, 'wb') as f:
     pickle.dump(spectra, f)
 
