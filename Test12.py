@@ -42,8 +42,8 @@ def synth_8542(atmos, conserve, useNe, stokes=False):
     # atmos = Atmosphere(ScaleType.Geometric, depthScale=data['height'], temperature=data['temperature'], vlos=data['vlos'], vturb=data['vturb'], ne=data['ne'], nHTot=data['nHTot'])
     atmos.convert_scales()
     atmos.quadrature(5)
-    aSet = RadiativeSet([H_3_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
-    aSet.set_active('H', 'Ca')
+    aSet = RadiativeSet([H_3_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_9_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
+    aSet.set_active('H', 'He', 'Ca')
     # aSet.set_detailed_lte('Ca')
     spect = aSet.compute_wavelength_grid()
 
