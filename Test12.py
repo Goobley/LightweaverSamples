@@ -14,10 +14,8 @@ import pickle
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, wait
 from tqdm import tqdm
-from lightweaver.utils import NgOptions
+from lightweaver.utils import NgOptions, get_default_molecule_path
 from astropy.io import fits
-
-
 
 def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=500):
     for i in range(NmaxIter):
@@ -35,6 +33,7 @@ def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=500):
 
 wave = np.linspace(853.9444, 854.9444, 1001)
 # wave = np.linspace(392, 398, 10001)
+# wave = np.linspace(655.9691622298104, 656.9691622298104, 1001)
 def synth_8542(atmos, conserve, useNe, stokes=False):
     # atmos = Atmosphere(ScaleType.Tau500, depthScale=10**data['tau'], temperature=data['temperature'], vlos=data['vlos']/1e2, vturb=data['vturb']/1e2)
     # atmos = Atmosphere(ScaleType.Geometric, depthScale=data['height']/1e2, temperature=data['temperature'], vlos=data['vlos']/1e2, vturb=data['vturb']/1e2)
@@ -42,12 +41,12 @@ def synth_8542(atmos, conserve, useNe, stokes=False):
     # atmos = Atmosphere(ScaleType.Geometric, depthScale=data['height'], temperature=data['temperature'], vlos=data['vlos'], vturb=data['vturb'], ne=data['ne'], nHTot=data['nHTot'])
     atmos.convert_scales()
     atmos.quadrature(5)
-    aSet = RadiativeSet([H_3_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_9_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
-    aSet.set_active('H', 'He', 'Ca')
+    aSet = RadiativeSet([H_6_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_9_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
+    aSet.set_active('H', 'Ca')
     # aSet.set_detailed_lte('Ca')
     spect = aSet.compute_wavelength_grid()
 
-    molPaths = ['../Molecules/' + m + '.molecule' for m in ['H2']]
+    molPaths = [get_default_molecule_path() + m + '.molecule' for m in ['H2']]
     mols = MolecularTable(molPaths)
 
     if useNe:
