@@ -17,7 +17,7 @@ from tqdm import tqdm
 from lightweaver.utils import NgOptions, get_default_molecule_path
 from astropy.io import fits
 
-def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=500):
+def iterate_ctx(ctx, atmos, eqPops, prd=True, Nscatter=3, NmaxIter=500, updateLte=False):
     for i in range(NmaxIter):
         dJ = ctx.formal_sol_gamma_matrices()
         if i < Nscatter:
@@ -25,6 +25,9 @@ def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=500):
         delta = ctx.stat_equil()
         if prd:
             dRho = ctx.prd_redistribute(maxIter=5)
+
+        if updateLte:
+            eqPops.update_lte_atoms_Hmin_pops(atmos)
 
         if dJ < 3e-3 and delta < 1e-3:
             print(i)
@@ -35,29 +38,29 @@ wave = np.linspace(853.9444, 854.9444, 1001)
 # wave = np.linspace(392, 398, 10001)
 # wave = np.linspace(655.9691622298104, 656.9691622298104, 1001)
 def synth_8542(atmos, conserve, useNe, stokes=False):
-    # atmos = Atmosphere(ScaleType.Tau500, depthScale=10**data['tau'], temperature=data['temperature'], vlos=data['vlos']/1e2, vturb=data['vturb']/1e2)
-    # atmos = Atmosphere(ScaleType.Geometric, depthScale=data['height']/1e2, temperature=data['temperature'], vlos=data['vlos']/1e2, vturb=data['vturb']/1e2)
-    # atmos = Atmosphere(ScaleType.ColumnMass, depthScale=data['cmass'], temperature=data['temperature'], vlos=data['vlos'], vturb=data['vturb'], ne=data['ne'], nHTot=data['nHTot'])
-    # atmos = Atmosphere(ScaleType.Geometric, depthScale=data['height'], temperature=data['temperature'], vlos=data['vlos'], vturb=data['vturb'], ne=data['ne'], nHTot=data['nHTot'])
     atmos.convert_scales()
     atmos.quadrature(5)
     aSet = RadiativeSet([H_6_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_9_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
     aSet.set_active('H', 'Ca')
-    # aSet.set_detailed_lte('Ca')
     spect = aSet.compute_wavelength_grid()
 
     molPaths = [get_default_molecule_path() + m + '.molecule' for m in ['H2']]
     mols = MolecularTable(molPaths)
 
     if useNe:
-        eqPops = aSet.compute_eq_pops(mols, atmos)
+        eqPops = aSet.compute_eq_pops(atmos, mols)
     else:
-        eqPops = aSet.iterate_lte_ne_eq_pops(mols, atmos)
-    ctx = LwContext(atmos, spect, eqPops, ngOptions=NgOptions(0,0,0), hprd=True, conserveCharge=conserve)
-    iterate_ctx(ctx, prd=True)
+        eqPops = aSet.iterate_lte_ne_eq_pops(atmos, mols)
+    ctx = LwContext(atmos, spect, eqPops, ngOptions=NgOptions(0,0,0), hprd=True, conserveCharge=conserve, Nthreads=8)
+    ctx.depthData.fill = True
+    start = time.time()
+    iterate_ctx(ctx, atmos, eqPops, prd=False, updateLte=False)
+    end = time.time()
+    print('%.2f s' % (end - start))
     eqPops.update_lte_atoms_Hmin_pops(atmos)
-    Iwave = ctx.compute_rays(wave, [atmos.muz[-1]], stokes=stokes)
-    return Iwave
+    Iwave = ctx.compute_rays(wave, [atmos.muz[-1]], stokes=False)
+    IwaveStokes = ctx.compute_rays(wave, [atmos.muz[-1]], stokes=stokes)
+    return ctx, Iwave, IwaveStokes
 
 def add_B(atmos):
     atmos.B = np.ones(atmos.Nspace) * 1.0
@@ -66,27 +69,11 @@ def add_B(atmos):
 
 
 atmosCons = Falc82()
-# add_B(atmosCons)
-IwaveCons = synth_8542(atmosCons, conserve=True, useNe=False, stokes=False)
+add_B(atmosCons)
+ctx, IwaveCons, _ = synth_8542(atmosCons, conserve=True, useNe=False, stokes=False)
 atmosLte = Falc82()
-# add_B(atmosLte)
-IwaveLte = synth_8542(atmosLte, conserve=False, useNe=False, stokes=False)
+add_B(atmosLte)
+ctx, IwaveLte, _ = synth_8542(atmosLte, conserve=False, useNe=False, stokes=False)
 atmosFal = Falc82()
-# add_B(atmosFal)
-Iwave = synth_8542(atmosFal, conserve=False, useNe=True, stokes=False)
-
-# atmos = Falc80()
-# add_B(atmos)
-# atmos.convert_scales()
-# atmos.quadrature(5)
-# aSet = RadiativeSet([H_3_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
-# aSet.set_active('H', 'Ca')
-# spect = aSet.compute_wavelength_grid()
-
-# molPaths = ['../Molecules/' + m + '.molecule' for m in ['H2']]
-# mols = MolecularTable(molPaths)
-# eqPops = aSet.compute_eq_pops(mols, atmos)
-# ctx = LwContext(atmos, spect, eqPops, ngOptions=NgOptions(0,0,0), hprd=False, conserveCharge=False)
-# iterate_ctx(ctx, prd=False)
-# ctx.single_stokes_fs()
-# s = ctx.spect
+add_B(atmosFal)
+ctx, Iwave, IwaveStokes = synth_8542(atmosFal, conserve=False, useNe=True, stokes=True)
