@@ -82,7 +82,7 @@ def cmo_synth(atmosData, crsw=None, NmaxIter=1000):
             atmos.quadrature(5)
 
             eqPops = aSet.iterate_lte_ne_eq_pops(atmos)
-            ctx = LwContext(atmos, spect, eqPops, conserveCharge=True, initSol=InitialSolution.Lte, crswCallback=crsw)
+            ctx = lw.Context(atmos, spect, eqPops, conserveCharge=False, initSol=InitialSolution.Lte, crswCallback=crsw)
             converged = True
             exploding = False
             try:
@@ -151,7 +151,7 @@ del data, extData
 redoJobs = []
 redoFutures = []
 with ProcessPoolExecutor() as executor:
-    futures = [executor.submit(cmo_synth, d) for d in atmosData]
+    futures = [executor.submit(cmo_synth, d) for d in atmosData[:3]]
     tq = tqdm(as_completed(futures), total=len(futures))
     for f in tq:
         try:
