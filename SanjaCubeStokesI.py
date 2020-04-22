@@ -9,6 +9,7 @@ from lightweaver.atomic_table import get_global_atomic_table
 from lightweaver.molecule import MolecularTable
 from lightweaver.LwCompiled import LwContext
 from lightweaver.utils import InitialSolution, ExplodingMatrixError, ConvergenceError
+import lightweaver as lw
 from concurrent.futures import ProcessPoolExecutor, wait, as_completed
 from tqdm import tqdm
 from contextlib import redirect_stdout
@@ -28,12 +29,16 @@ def prep_atmos(data, extData, xIdx, yIdx):
 
     return {'x': xIdx, 'y': yIdx, 'height': height, 'temp': temp, 'vlos': vlos, 'pgas': pgas, 'density': density, 'ne': ne}
 
-def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=1000):
+def iterate_ctx(ctx, eqPops, prd=True, Nscatter=3, NmaxIter=1000, nr=False):
     for i in range(NmaxIter):
         dJ = ctx.formal_sol_gamma_matrices()
         if i < Nscatter:
             continue
         delta = ctx.stat_equil()
+        if nr:
+            ctx.nr_post_update()
+            for p in eqPops.atomicPops:
+                p.nStar[:] = lw.lte_pops(p.model, atmos.temperature, atmos.ne, p.nTotal)
         if prd:
             dRho = ctx.prd_redistribute(maxIter=5)
 
@@ -68,7 +73,7 @@ def cmo_synth(atmosData, crsw=None, NmaxIter=1000):
                 crsw = crsw()
             atmos = Atmosphere(ScaleType.Geometric, depthScale=atmosData['height'], temperature=atmosData['temp'], vlos=atmosData['vlos'], vturb=4000*np.ones_like(atmosData['height']))
 
-            aSet = RadiativeSet([H_3_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
+            aSet = RadiativeSet([H_6_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
             aSet.set_active('H', 'Ca')
 
             spect = aSet.compute_wavelength_grid()
@@ -76,13 +81,12 @@ def cmo_synth(atmosData, crsw=None, NmaxIter=1000):
             atmos.convert_scales(Pgas=atmosData['pgas'])
             atmos.quadrature(5)
 
-            mols = MolecularTable()
-            eqPops = aSet.iterate_lte_ne_eq_pops(mols, atmos)
+            eqPops = aSet.iterate_lte_ne_eq_pops(atmos)
             ctx = LwContext(atmos, spect, eqPops, conserveCharge=True, initSol=InitialSolution.Lte, crswCallback=crsw)
             converged = True
             exploding = False
             try:
-                nIter = iterate_ctx(ctx, prd=False, NmaxIter=NmaxIter)
+                nIter = iterate_ctx(ctx, eqPops, prd=False, NmaxIter=NmaxIter, nr=True)
             except ConvergenceError:
                 converged = False
                 nIter = NmaxIter
@@ -111,10 +115,9 @@ def cmo_synth_lte(atmosData):
             atmos.convert_scales(Pgas=atmosData['pgas'])
             atmos.quadrature(5)
 
-            mols = MolecularTable()
-            eqPops = aSet.iterate_lte_ne_eq_pops(mols, atmos)
+            eqPops = aSet.iterate_lte_ne_eq_pops(atmos)
             ctx = LwContext(atmos, spect, eqPops, conserveCharge=False)
-            iterate_ctx(ctx, prd=False)
+            iterate_ctx(ctx, eqPops, prd=False)
             Iwave = ctx.compute_rays(wave, [1.0])
             return Iwave
 
@@ -132,10 +135,9 @@ def cmo_synth_given(atmosData):
             atmos.convert_scales()
             atmos.quadrature(5)
 
-            mols = MolecularTable()
-            eqPops = aSet.iterate_lte_ne_eq_pops(mols, atmos)
+            eqPops = aSet.iterate_lte_ne_eq_pops(atmos)
             ctx = LwContext(atmos, spect, eqPops, conserveCharge=False)
-            iterate_ctx(ctx, prd=False)
+            iterate_ctx(ctx, eqPops, prd=False)
             Iwave = ctx.compute_rays(wave, [1.0])
             return Iwave
 
@@ -149,7 +151,7 @@ del data, extData
 redoJobs = []
 redoFutures = []
 with ProcessPoolExecutor() as executor:
-    futures = [executor.submit(cmo_synth_given, d) for d in atmosData]
+    futures = [executor.submit(cmo_synth, d) for d in atmosData]
     tq = tqdm(as_completed(futures), total=len(futures))
     for f in tq:
         try:
@@ -176,7 +178,7 @@ for f in futures + redoFutures:
     except:
         spectra.append(None)
 
-name = 'HerculesDetailedCube.pickle'
+name = 'HerculesNrCube.pickle'
 with open(name, 'wb') as f:
     pickle.dump(spectra, f)
 
