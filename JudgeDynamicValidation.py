@@ -16,6 +16,7 @@ from concurrent.futures import ProcessPoolExecutor, wait
 from tqdm import tqdm
 from astropy.io import fits
 
+Prd = True
 
 
 def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=500):
@@ -35,7 +36,10 @@ def iterate_ctx(ctx, prd=True, Nscatter=3, NmaxIter=500):
 atmos = Falc82()
 atmos.convert_scales()
 atmos.quadrature(5)
-aSet = RadiativeSet([H_4_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
+if Prd:
+    aSet = RadiativeSet([H_6_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
+else:
+    aSet = RadiativeSet([H_4_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
 aSet.set_active('H')
 spect = aSet.compute_wavelength_grid()
 
@@ -43,9 +47,9 @@ spect = aSet.compute_wavelength_grid()
 molPaths = []
 mols = MolecularTable(molPaths)
 
-eqPops = aSet.compute_eq_pops(mols, atmos)
-ctx = LwContext(atmos, spect, eqPops, ngOptions=NgOptions(0,0,0), hprd=False, conserveCharge=False)
-iterate_ctx(ctx, prd=False)
+eqPops = aSet.compute_eq_pops(atmos, mols=mols)
+ctx = LwContext(atmos, spect, eqPops, ngOptions=NgOptions(0,0,0), hprd=Prd, conserveCharge=False)
+iterate_ctx(ctx, prd=Prd)
 
 print('Achieved initial Stat Eq')
 print('Waiting')
@@ -72,6 +76,8 @@ for it in range(NtStep):
     for sub in range(NsubStep):
         dJ = ctx.formal_sol_gamma_matrices()
         delta, prevState = ctx.time_dep_update(dt, prevState)
+        if Prd:
+            ctx.prd_redistribute(maxIter=5)
 
         if delta < 1e-3 and dJ < 3e-3:
             break
@@ -86,6 +92,7 @@ for it in range(NtStep):
 
 initialAtmos = Falc82()
 
+plt.ion()
 fig, ax = plt.subplots(2,2, sharex=True)
 ax = ax.flatten()
 cmass = np.log10(atmos.cmass/1e1)
@@ -109,4 +116,3 @@ ax[1].set_ylim(6, 11)
 ax[2].set_ylim(1, 6)
 ax[3].set_ylim(10, 11)
 
-fig.show()

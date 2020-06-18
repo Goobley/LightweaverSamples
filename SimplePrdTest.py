@@ -29,12 +29,12 @@ def iterate_ctx(ctx, atmos, eqPops, prd=True, Nscatter=3, NmaxIter=500, updateLt
             print('----------')
             return
 
-wave = np.linspace(853.9444, 854.9444, 1001)
-def synth_8542(atmos, conserve, useNe, stokes=False):
+wave = np.linspace(279, 280, 5001)
+def synth_line(atmos, conserve, useNe=True, prd=False):
     atmos.convert_scales()
     atmos.quadrature(5)
     aSet = lw.RadiativeSet([H_6_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_9_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
-    aSet.set_active('H', 'Ca')
+    aSet.set_active('H', 'Ca', 'Mg')
     spect = aSet.compute_wavelength_grid()
 
     molPaths = [get_default_molecule_path() + m + '.molecule' for m in ['H2']]
@@ -44,30 +44,31 @@ def synth_8542(atmos, conserve, useNe, stokes=False):
         eqPops = aSet.compute_eq_pops(atmos, mols)
     else:
         eqPops = aSet.iterate_lte_ne_eq_pops(atmos, mols)
-    ctx = lw.Context(atmos, spect, eqPops, ngOptions=NgOptions(0,0,0), conserveCharge=conserve, Nthreads=8)
+    ctx = lw.Context(atmos, spect, eqPops, ngOptions=NgOptions(0,0,0), hprd=False, conserveCharge=conserve, Nthreads=8)
     ctx.depthData.fill = True
     start = time.time()
-    iterate_ctx(ctx, atmos, eqPops, prd=False, updateLte=False)
+    iterate_ctx(ctx, atmos, eqPops, prd=prd, updateLte=False)
     end = time.time()
     print('%.2f s' % (end - start))
     eqPops.update_lte_atoms_Hmin_pops(atmos)
     Iwave = ctx.compute_rays(wave, [atmos.muz[-1]], stokes=False)
-    IwaveStokes = ctx.compute_rays(wave, [atmos.muz[-1]], stokes=stokes)
-    return ctx, Iwave, IwaveStokes
+    return ctx, Iwave
 
-def add_B(atmos):
-    atmos.B = np.ones(atmos.Nspace) * 1.0
-    atmos.gammaB = np.ones(atmos.Nspace) * np.pi * 0.25
-    atmos.chiB = np.zeros(atmos.Nspace)
 
 atmosRef = Falc82()
-ctxRef, IwaveRef, _ = synth_8542(atmosRef, conserve=False, useNe=True, stokes=False)
+ctxRef, IwaveRef = synth_line(atmosRef, conserve=False, useNe=True, prd=True)
+atmosCrd = Falc82()
+ctxCrd, IwaveCrd = synth_line(atmosCrd, conserve=False, useNe=True, prd=False)
+
 atmosCons = Falc82()
-ctxCons, IwaveCons, _ = synth_8542(atmosCons, conserve=True, useNe=False, stokes=False)
+ctxCons, IwaveCons = synth_line(atmosCons, conserve=True, useNe=False, prd=True)
 atmosLte = Falc82()
-ctx, IwaveLte, _ = synth_8542(atmosLte, conserve=False, useNe=False, stokes=False)
+ctx, IwaveLte = synth_line(atmosLte, conserve=False, useNe=False, prd=True)
 
 plt.ion()
-plt.plot(wave, IwaveRef, label='Reference FAL')
-plt.plot(wave, IwaveCons, label='Reference Cons')
-plt.plot(wave, IwaveLte, label='Reference LTE n_e')
+plt.plot(wave, IwaveCrd, label='Reference FAL CRD')
+plt.plot(wave, IwaveRef, label='Reference FAL PRD')
+plt.plot(wave, IwaveCons, label='Cons PRD')
+plt.plot(wave, IwaveLte, label='LTE n_e PRD')
+
+plt.legend()

@@ -60,14 +60,21 @@ def add_B(atmos):
     atmos.gammaB = np.ones(atmos.Nspace) * np.pi * 0.25
     atmos.chiB = np.zeros(atmos.Nspace)
 
+
+
 atmosRef = Falc82()
-ctxRef, IwaveRef, _ = synth_8542(atmosRef, conserve=False, useNe=True, stokes=False)
+add_B(atmosRef)
+ctxRef, IwaveRef, stokesRef = synth_8542(atmosRef, conserve=False, useNe=True, stokes=True)
 atmosCons = Falc82()
-ctxCons, IwaveCons, _ = synth_8542(atmosCons, conserve=True, useNe=False, stokes=False)
+add_B(atmosCons)
+ctxCons, IwaveCons, stokesCons = synth_8542(atmosCons, conserve=True, useNe=False, stokes=True)
 atmosLte = Falc82()
-ctx, IwaveLte, _ = synth_8542(atmosLte, conserve=False, useNe=False, stokes=False)
+add_B(atmosLte)
+ctx, IwaveLte, stokesLte = synth_8542(atmosLte, conserve=False, useNe=False, stokes=True)
 
 plt.ion()
-plt.plot(wave, IwaveRef, label='Reference FAL')
-plt.plot(wave, IwaveCons, label='Reference Cons')
-plt.plot(wave, IwaveLte, label='Reference LTE n_e')
+plt.plot(wave, stokesRef[-1], label='V Reference FAL')
+plt.plot(wave, stokesCons[-1], label='V Reference Cons')
+plt.plot(wave, stokesLte[-1], label='V Reference LTE n_e')
+
+plt.legend()
