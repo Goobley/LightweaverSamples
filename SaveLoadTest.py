@@ -60,6 +60,8 @@ if path.isfile(ctxFilename):
     with open(ctxFilename, 'rb') as pkl:
         ctx = pickle.load(pkl)
 
+    # NOTE(cmo): Check background serialisation
+    ctx.update_deps()
     Iwave = compute_mgk(ctx)
     IwaveRef = np.load(refSpectFilename)
     plt.ion()
