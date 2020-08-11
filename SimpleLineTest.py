@@ -31,7 +31,7 @@ def iterate_ctx(ctx, atmos, eqPops, prd=True, Nscatter=3, NmaxIter=500, updateLt
 
 wave = np.linspace(853.9444, 854.9444, 1001)
 def synth_8542(atmos, conserve, useNe, stokes=False):
-    atmos.convert_scales()
+    # atmos.convert_scales()
     atmos.quadrature(5)
     aSet = lw.RadiativeSet([H_6_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_9_atom(), MgII_atom(), N_atom(), Na_atom(), S_atom()])
     aSet.set_active('H', 'Ca')
@@ -62,12 +62,12 @@ def add_B(atmos):
 
 atmosRef = Falc82()
 ctxRef, IwaveRef, _ = synth_8542(atmosRef, conserve=False, useNe=True, stokes=False)
-atmosCons = Falc82()
-ctxCons, IwaveCons, _ = synth_8542(atmosCons, conserve=True, useNe=False, stokes=False)
-atmosLte = Falc82()
-ctx, IwaveLte, _ = synth_8542(atmosLte, conserve=False, useNe=False, stokes=False)
+# atmosCons = Falc82()
+# ctxCons, IwaveCons, _ = synth_8542(atmosCons, conserve=True, useNe=False, stokes=False)
+# atmosLte = Falc82()
+# ctx, IwaveLte, _ = synth_8542(atmosLte, conserve=False, useNe=False, stokes=False)
 
-plt.ion()
-plt.plot(wave, IwaveRef, label='Reference FAL')
-plt.plot(wave, IwaveCons, label='Reference Cons')
-plt.plot(wave, IwaveLte, label='Reference LTE n_e')
+# plt.ion()
+# plt.plot(wave, IwaveRef, label='Reference FAL')
+# plt.plot(wave, IwaveCons, label='Reference Cons')
+# plt.plot(wave, IwaveLte, label='Reference LTE n_e')
