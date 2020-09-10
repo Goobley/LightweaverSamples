@@ -14,7 +14,6 @@ from lightweaver.utils import NgOptions, get_default_molecule_path
 from weno4 import weno4
 from numba import njit
 
-
 # NOTE(cmo): These appear to work pretty well on initial inspection. May need
 # some kind of limiting for the prolongation case.
 def restrict(fine, coarse):
@@ -208,16 +207,29 @@ def v_cycle(ctx, eqPops, gridIdx, rhs):
             print('Initial: %e, now: %e' % (initialError, error))
         # print(nIter)
         Rc = error
+        residRatio = 1.0
     else:
         nInitial = [np.copy(eqPops[gridIdx][a.element]) for a in ctx[gridIdx].activeAtoms]
+        coarse = ctx[gridIdx-1].atmos
+        fine = ctx[gridIdx].atmos
         # pre-smooth
         for nu in range(nu1):
             dJ = ctx[gridIdx].formal_sol_gamma_matrices()
             delta = stat_equil_rhs(ctx[gridIdx], rhs)
             nIter[gridIdx] += 1
+        truncationCompFine = [np.zeros_like(eqPops[gridIdx][a.element]) for a in ctx[gridIdx].activeAtoms]
+        truncationCompFineR = [np.zeros_like(eqPops[gridIdx-1][a.element]) for a in ctx[gridIdx-1].activeAtoms]
+        truncErr94 = delta
+        for i, atom in enumerate(ctx[gridIdx].activeAtoms):
+            Gamma = np.zeros((atom.Nlevel, atom.Nlevel))
+            for k in range(ctx[gridIdx].atmos.Nspace):
+                Gamma[...] = atom.Gamma[:, :, k]
+                Gamma[-1, :] = 1.0
+                truncationCompFine[i][:, k] = Gamma @ atom.n[:, k]
 
-        coarse = ctx[gridIdx-1].atmos
-        fine = ctx[gridIdx].atmos
+            restrict(truncationCompFine[i].reshape(-1, fine.Nz, fine.Nx),
+                     truncationCompFineR[i].reshape(-1, coarse.Nz, coarse.Nx))
+
 
         ctx[gridIdx].formal_sol_gamma_matrices(lambdaIterate=True)
         nIter[gridIdx] += 1
@@ -245,6 +257,10 @@ def v_cycle(ctx, eqPops, gridIdx, rhs):
                 Gamma[-1, :] = 1.0
                 coarseRhs2[i][:, k] = Gamma @ atom.n[:, k]
             coarseRhs.append(coarseRhs2[i] + coarseResidual[i])
+        truncationCompCoarse = coarseRhs2
+        truncErrorCoarse = [tc - tfr for tc, tfr in
+                            zip(truncationCompCoarse, truncationCompFineR)]
+        # truncErrorFine = [1 / 3 * t for t in truncErrorCoarse]
 
         # Recursively get population update from coarser grids
         v_cycle(ctx, eqPops, gridIdx-1, coarseRhs)
@@ -266,11 +282,14 @@ def v_cycle(ctx, eqPops, gridIdx, rhs):
             nIter[gridIdx] += 1
 
         changes = [np.max(np.abs(eqPops[gridIdx][a.element] - nInitial[i]) / nInitial[i]) for i, a in enumerate(ctx[gridIdx].activeAtoms)]
+
+        residRatio = max([np.sqrt(np.sum(fr**2)) / np.sqrt(np.sum(tef**2)) for fr, tef in zip(fineResidual, truncErrorCoarse)])
+        print("Idx: %d Ratio: %e" % (gridIdx, residRatio))
         Rc = max(changes)
-    return Rc
+    return Rc, residRatio
 
 atmos1d = Falc82()
-Nx = 20
+Nx = 5
 Lx = 2e6
 x = np.linspace(0, Lx, Nx)
 oldZ = np.copy(atmos1d.height)
@@ -279,7 +298,7 @@ z = weno4(np.linspace(0, 1, Nz), np.linspace(0, 1, atmos1d.height.shape[0]), atm
 temperature = np.zeros((Nz, Nx))
 temperature[...] = weno4(z, oldZ, atmos1d.temperature)[:, None]
 deltaT = 500
-temperature += (deltaT * np.sin(6 * np.pi*x / Lx))[None, :]
+temperature += (deltaT * np.sin(2 * np.pi*x / Lx))[None, :]
 vx = np.zeros((Nz, Nx))
 vz = np.zeros((Nz, Nx))
 vturb = np.zeros((Nz, Nx))
@@ -304,7 +323,7 @@ baseAtmos = deepcopy(atmoses[-1])
 baseAtmos.quadrature(7)
 
 aSet = lw.RadiativeSet([H_6_atom(), C_atom(), O_atom(), Si_atom(), Al_atom(), CaII_atom(), Fe_atom(), He_atom(), Mg_atom(), N_atom(), Na_atom(), S_atom()])
-aSet.set_active('Ca')
+aSet.set_active('H', 'Ca')
 spect = aSet.compute_wavelength_grid()
 
 # molPaths = [get_default_molecule_path() + m + '.molecule' for m in ['H2']]
@@ -320,28 +339,71 @@ eta2 = 5e-4
 nu1 = 2
 nu2 = 4
 
-
-Rc = 1.0
+Nested = False
 count = 0
 global nIter
 nIter = [0 for f in ctxs]
 start = time.time()
-for i in range(nu2):
-    ctxs[-1].formal_sol_gamma_matrices()
-while Rc > eta2:
-    rhs = [np.zeros_like(eqPopses[-1][a.element]) for a in ctxs[-1].activeAtoms]
-    for i, a in enumerate(ctxs[-1].activeAtoms):
-        rhs[i][-1, :] = eqPopses[-1].atomicPops[a.element].nTotal
-    Rc = v_cycle(ctxs, eqPopses, len(ctxs)-1, rhs)
-    count += 1
-    print('Rc after cycle %d, %e' % (count, Rc))
+if Nested:
+    # Full multigrid V-cycle
+    # NOTE(cmo): Initial guess on coarsest grid
+    for i in range(100):
+        dJ = ctxs[0].formal_sol_gamma_matrices()
+        delta = stat_equil(ctxs[0])
+        nIter[0] += 1
+
+        if delta < eta1:
+            break
+    else:
+        raise lw.ConvergenceError('Coarse not converged')
+
+    for gridIdx in range(1, len(ctxs)):
+        Rc = 1.0
+        coarse = ctxs[gridIdx-1].atmos
+        fine = ctxs[gridIdx].atmos
+        # while Rc > eta2:
+        for i, a in enumerate(ctxs[gridIdx].activeAtoms):
+            prolong(coarse.z, fine.z, coarse.x, fine.x,
+                    eqPopses[gridIdx-1][a.element].reshape(-1, coarse.Nz, coarse.Nx),
+                    eqPopses[gridIdx][a.element].reshape(-1, fine.Nz, fine.Nx))
+        Rcs = []
+        for NmgIter in range(100):
+            rhs = [np.zeros_like(eqPopses[gridIdx][a.element]) for a in ctxs[gridIdx].activeAtoms]
+            for i, a in enumerate(ctxs[gridIdx].activeAtoms):
+                rhs[i][-1, :] = eqPopses[gridIdx].atomicPops[a.element].nTotal
+            Rcs.append(v_cycle(ctxs, eqPopses, gridIdx, rhs)[0])
+            print('Rc after cycle %d on grid %d: %e' % (NmgIter, gridIdx, Rcs[-1]))
+            if NmgIter >= 1:
+                lam = Rcs[-1]/Rcs[-2]
+                cond1 = Rcs[-1] * lam / (1.0 - lam)
+                cond2 = 0.125 * Rcs[-2]
+                print('%e vs %e' % (cond1, cond2))
+                if NmgIter == 1:
+                    continue
+                # if cond1 < cond2:
+                #     break
+                if Rcs[-1] < 1e-6:
+                    break
+else:
+    spectra = []
+    Rc = 1.0
+    for i in range(nu2):
+        ctxs[-1].formal_sol_gamma_matrices()
+    while Rc > 1e-6:
+        rhs = [np.zeros_like(eqPopses[-1][a.element]) for a in ctxs[-1].activeAtoms]
+        for i, a in enumerate(ctxs[-1].activeAtoms):
+            rhs[i][-1, :] = eqPopses[-1].atomicPops[a.element].nTotal
+        Rc, ratio = v_cycle(ctxs, eqPopses, len(ctxs)-1, rhs)
+        spectra.append(np.copy(ctxs[-1].spect.I))
+        count += 1
+        print('Rc after cycle %d, %e, ratio: %e' % (count, Rc, ratio))
 end = time.time()
 
 baseError = 1.0
 startBase = time.time()
 for i in range(nu2):
     baseCtx.formal_sol_gamma_matrices()
-while baseError > eta2:
+while baseError > 1e-6:
     baseCtx.formal_sol_gamma_matrices()
     baseError = baseCtx.stat_equil()
 
